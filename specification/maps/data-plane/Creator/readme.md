@@ -20,6 +20,22 @@ To see additional help and options, run:
 
 ## Configuration
 
+### Suppression
+
+``` yaml
+directive:
+  - suppress: DefinitionsPropertiesNamesCamelCase
+    from: timezone.json
+    reason: It will break existing clients if we change the name
+
+  - suppress: INVALID_TYPE
+    reason: false positive from oav is breaking our example validation. See azure/oav#1020.
+
+  - suppress: RESPONSE_SCHEMA_NOT_IN_SPEC
+    reason: false positive from oav is breaking our example validation. See azure/oav#1021.
+
+```
+
 ### Basic Information
 
 These are the global settings for Creator Client.
