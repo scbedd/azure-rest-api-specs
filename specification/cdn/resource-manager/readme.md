@@ -63,9 +63,6 @@ input-file:
   - Microsoft.Cdn/stable/2024-09-01/afdx.json
   - Microsoft.Cdn/stable/2024-09-01/cdn.json
   - Microsoft.Cdn/stable/2024-09-01/cdnwebapplicationfirewall.json
-suppressions:
-  - code: MISSING_RESOURCE_ID
-    reason: Keeping it for legacy tooling
 ```
 
 ### Tag: package-preview-2024-06
@@ -112,7 +109,7 @@ input-file:
 
 suppressions:
   - code: PutRequestResponseSchemeArm
-    reason: False alarm. PUT request body is not superset of GET response body. We also do not support PATCH on keyGroups resource by design.  
+    reason: False alarm. PUT request body is not superset of GET response body. We also do not support PATCH on keyGroups resource by design.
 ```
 
 ### Tag: package-2023-05
