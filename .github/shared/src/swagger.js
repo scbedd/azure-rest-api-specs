@@ -65,6 +65,36 @@ export class Swagger {
   }
 
   /**
+   * @returns {Promise<Set<Swagger>>}
+   */
+  async getExamples() {
+    if (!this.#refs) {
+      const schema = await $RefParser.resolve(this.#path, {
+        resolve: { http: false },
+      });
+
+      const refPaths = schema
+        .paths("file")
+        // include only example refs
+        .filter((p) => example(p))
+        // Exclude ourself
+        .filter((p) => resolve(p) !== resolve(this.#path));
+
+      this.#refs = new Set(
+        refPaths.map(
+          (p) =>
+            new Swagger(p, {
+              logger: this.#logger,
+              specModel: this.#specModel,
+            }),
+        ),
+      );
+    }
+
+    return this.#refs;
+  }
+
+  /**
    * @returns {string} absolute path
    */
   get path() {

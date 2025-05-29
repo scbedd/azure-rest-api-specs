@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
-// The original ordering of this code is pulled directly from the original at
-// openapi-alps#public/rest-api-specs-scripts/src/modelValidationPipeline.ts
 import * as oav from "oav";
 import * as path from "path";
 import * as fs from "fs";
 
 import { consoleLogger } from "@azure-tools/specs-shared/logger";
+import { Swagger } from "@azure-tools/specs-shared/swagger";
+
 import {
+  example,
   getChangedFiles,
+  specification,
   swagger,
 } from "@azure-tools/specs-shared/changed-files"; //getChangedFiles,
 import { ReportableOavError } from "./formatting.js";
@@ -21,11 +23,6 @@ export async function checkExamples(
   const changedFiles = await getChangedFiles({
     cwd: rootDirectory,
   });
-  // const changedFiles: string[] = [
-  //     "specification/cdn/resource-manager/Microsoft.Cdn/preview/2024-07-22-preview/edgeaction.json",
-  //     "specification/cdn/resource-manager/Microsoft.Cdn/stable/2024-09-01/afdx.json",
-  //     "specification/cdn/resource-manager/readme.md"
-  // ];
 
   const swaggerFiles = await processFilesToSpecificationList(
     rootDirectory,
@@ -80,11 +77,6 @@ export async function checkSpecs(
   const changedFiles = await getChangedFiles({
     cwd: rootDirectory,
   });
-  // const changedFiles: string[] = [
-  //     "specification/cdn/resource-manager/Microsoft.Cdn/preview/2024-07-22-preview/edgeaction.json",
-  //     "specification/cdn/resource-manager/Microsoft.Cdn/stable/2024-09-01/afdx.json",
-  //     "specification/cdn/resource-manager/readme.md"
-  // ];
 
   const swaggerFiles = await processFilesToSpecificationList(
     rootDirectory,
@@ -128,40 +120,73 @@ export async function checkSpecs(
   return [0, swaggerFiles, []];
 }
 
+async function getFiles(
+  rootDirectory: string,
+  directory: string,
+): Promise<string[]> {
+  const target = path.join(rootDirectory, directory);
+  const items = await fs.promises.readdir(target, {
+    withFileTypes: true,
+  });
+
+  return items
+    .filter((d) => d.isFile() && d.name.endsWith(".json"))
+    .map((d) => path.join(target, d.name))
+    .map((d) => d.replace(/^.*?(specification\/.*)$/, "$1"))
+    .filter((d) => specification(d));
+}
+
 export async function processFilesToSpecificationList(
   rootDirectory: string,
   files: string[],
 ): Promise<string[]> {
-  consoleLogger.info(`Processing ${files.length} files:`);
-  consoleLogger.info(files.join("\n"));
+  const cachedSwaggerSpecs = new Map<string, string[]>();
+  const resultFiles: string[] = [];
+  const additionalSwaggerFiles: string[] = [];
 
-  return files.filter((file) => {
-    // todo: rationalize if this is even necessary given the swagger check
-    // I guess this might filter out files that are not swagger files /shrug leave it for now
-    if (
-      file.match(/.*\/cadl-project.yaml$/gi) !== null ||
-      file.match(/.*\/package.json$/gi) !== null ||
-      file.match(/.*\/sdk-suppressions.yaml$/gi) !== null ||
-      file.match(/.*\/suppressions.yaml$/gi) !== null ||
-      file.match(/.*\/tspconfig.yaml$/gi) !== null ||
-      file.match(/.*\/cspell.yaml$/gi) !== null ||
-      file.match(/.*\/scenarios\/*/gi) !== null ||
-      file.match(/.*(json|yaml)$/gi) == null ||
-      file.match(/.*specification\/.*/gi) == null ||
-      file.match(/.*\/examples\/*/gi) !== null ||
-      file.match(/.*\/quickstart-templates\/*/gi) !== null
-    ) {
-      return false;
+  // files from get-changed-files are relative to the root of the repo,
+  // though that context is passed into this from cli arguments.
+  for (const file of files) {
+    const absoluteFilePath = path.join(rootDirectory, file);
+
+    // if the file is an example, we need to find the swagger file that references it
+    if (example(file)) {
+      /*
+        examples exist in the same directory as the swagger file that references them:
+
+        path/to/swagger/2024-01-01/examples/example.json <-- this is an example file path
+        path/to/swagger/2024-01-01/swagger.json <-- we need to identify this file if it references the example
+        path/to/swagger/2024-01-01/swagger2.json <-- and do nothing with this one
+      */
+      const swaggerDir = path.dirname(path.dirname(file));
+
+      const visibleSwaggerFiles = await getFiles(rootDirectory, swaggerDir);
+
+      for (const swaggerFile of visibleSwaggerFiles) {
+        if (!cachedSwaggerSpecs.has(swaggerFile)) {
+          const swaggerModel = new Swagger(
+            path.join(rootDirectory, swaggerFile),
+          );
+          const exampleSwaggers = await swaggerModel.getExamples();
+          const examples = [...exampleSwaggers].map((e) => e.path);
+          cachedSwaggerSpecs.set(swaggerFile, examples);
+        }
+        const referencedExamples = cachedSwaggerSpecs.get(swaggerFile);
+
+        // the resolved files are absolute paths, so to compare them to the file we're looking at, we need
+        // to use the absolute path version of the example file.
+        if (referencedExamples?.indexOf(absoluteFilePath) !== -1) {
+          additionalSwaggerFiles.push(swaggerFile);
+        }
+      }
     }
 
-    const swaggerResult = swagger(file);
-    const targetFile = path.join(rootDirectory, file);
-
-    // if it's a swagger file, we should check to see if it exists
-    // as a deleted file will also show up in the changed files list
-    if (swaggerResult && fs.existsSync(targetFile)) {
-      return true;
+    // finally handle our base case where the file we're examining is itself a swagger file
+    if (swagger(file) && fs.existsSync(absoluteFilePath)) {
+      resultFiles.push(file);
     }
-    return false;
-  });
+  }
+
+  // combine and make the results unique
+  return Array.from(new Set([...resultFiles, ...additionalSwaggerFiles]));
 }
