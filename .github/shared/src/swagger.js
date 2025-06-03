@@ -4,6 +4,7 @@ import $RefParser, { ResolverError } from "@apidevtools/json-schema-ref-parser";
 import { readFile } from "fs/promises";
 import { dirname, relative, resolve } from "path";
 import { mapAsync } from "./array.js";
+import { includesFolder } from "./path.js";
 import { SpecModelError } from "./spec-model-error.js";
 
 /**
@@ -61,10 +62,7 @@ export class Swagger {
     const allRefs = await this.#getRefs();
 
     // filter out any paths that are examples
-    const filtered = new Map(
-      Array.from(allRefs.entries())
-        .filter(([path, _]) => !example(path))
-    );
+    const filtered = new Map([...allRefs].filter(([path]) => !example(path)));
 
     return filtered;
   }
@@ -118,10 +116,7 @@ export class Swagger {
     const allRefs = await this.#getRefs();
 
     // filter out any paths that are examples
-    const filtered = new Map(
-      Array.from(allRefs.entries())
-        .filter(([path, _]) => example(path))
-    );
+    const filtered = new Map([...allRefs].filter(([path]) => example(path)));
 
     return filtered;
   }
@@ -176,7 +171,9 @@ export class Swagger {
  */
 function example(file) {
   // Folder name "examples" should match case for consistency across specs
-  return typeof file === "string" && json(file) && file.includes("/examples/");
+  return (
+    typeof file === "string" && json(file) && includesFolder(file, "examples")
+  );
 }
 
 /**
