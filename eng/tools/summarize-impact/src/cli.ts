@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-import { evaluateImpact } from "./runner.js";
+import { evaluateImpact } from "./impact.js";
 import { getChangedFilesStatuses } from "@azure-tools/specs-shared/changed-files";
+import { setOutput } from "@azure-tools/specs-shared/error-reporting";
 
-import { resolve } from "path";
+import { resolve, join } from "path";
+import fs from "fs";
 import { parseArgs, ParseArgsConfig } from "node:util";
 import { simpleGit } from "simple-git";
 import { LabelContext, PRContext } from "./types.js";
@@ -44,7 +46,7 @@ export async function main() {
       number: {
         type: "string",
         short: "n",
-        multiple: false
+        multiple: false,
       },
       sourceBranch: {
         type: "string",
@@ -74,23 +76,23 @@ export async function main() {
       labels: {
         type: "string",
         short: "l",
-        multiple: false
+        multiple: false,
       },
       isDraft: {
         type: "boolean",
-        multiple: false
-      }
+        multiple: false,
+      },
     },
     allowPositionals: true,
   };
 
   const { values: opts } = parseArgs(config);
 
-  // todo: refactor these opts? They're not really options. I just don't want a bunch of positional args for clarity's sake
+  // todo: refactor these opts
   const sourceDirectory = opts.sourceDirectory as string;
   const targetDirectory = opts.targetDirectory as string;
   const sourceGitRoot = await getRootFolder(sourceDirectory);
-  const targetGitRoot = await getRootFolder(targetDirectory)
+  const targetGitRoot = await getRootFolder(targetDirectory);
   const fileList = await getChangedFilesStatuses({ cwd: sourceGitRoot });
   const sha = opts.sha as string;
   const sourceBranch = opts.sourceBranch as string;
@@ -104,23 +106,26 @@ export async function main() {
   const labelContext: LabelContext = {
     present: new Set(existingLabels),
     toAdd: new Set(),
-    toRemove: new Set()
+    toRemove: new Set(),
   };
 
-  const prContext = new PRContext(
-    sourceGitRoot,
-    targetGitRoot,
-    labelContext,
-    {
-      sha,
-      sourceBranch,
-      targetBranch,
-      repo,
-      prNumber,
-      owner,
-      fileList,
-      isDraft
-    });
+  const prContext = new PRContext(sourceGitRoot, targetGitRoot, labelContext, {
+    sha,
+    sourceBranch,
+    targetBranch,
+    repo,
+    prNumber,
+    owner,
+    fileList,
+    isDraft,
+  });
 
-  evaluateImpact(prContext, labelContext);
+  let impact = evaluateImpact(prContext, labelContext);
+
+  console.log("Evaluated impact: ", JSON.stringify(impact));
+
+  // Write to a temp file that can get picked up later.
+  const summaryFile = join(process.cwd(), "summary.json");
+  fs.writeFileSync(summaryFile, JSON.stringify(impact, null, 2));
+  setOutput("summary", summaryFile);
 }
