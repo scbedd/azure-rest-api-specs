@@ -1,0 +1,23 @@
+{
+  "name": "@azure-tools/integration-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@azure-tools/summarize-impact": "file:../summarize-impact",
+    "@octokit/rest": "^22.0.0",
+    "@azure-tools/specs-shared": "file:../../../.github/shared",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "~5.8.2",
+    "vitest": "^3.0.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
