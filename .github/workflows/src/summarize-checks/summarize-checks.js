@@ -26,7 +26,6 @@ import { PER_PAGE_MAX } from "../github.js";
 import {
   brChRevApproval,
   getViolatedRequiredLabelsRules,
-  processArmReviewLabels,
   processImpactAssessment,
   verRevApproval,
 } from "./labelling.js";
@@ -539,14 +538,12 @@ export function updateLabels(existingLabels, impactAssessment) {
     });
   }
 
-  // this is the only labelling that was part of original pipelinebot logic
-  processArmReviewLabels(labelContext, existingLabels);
-
   if (impactAssessment) {
     // will further update the label context if necessary
     processImpactAssessment(
       impactAssessment.targetBranch,
       labelContext,
+      impactAssessment.dataPlaneRequired,
       impactAssessment.resourceManagerRequired,
       impactAssessment.rpaasRPMissing,
       impactAssessment.rpaasExceptionRequired,

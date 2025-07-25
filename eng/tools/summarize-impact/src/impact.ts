@@ -92,7 +92,7 @@ export async function evaluateImpact(
 
   // examine changed files. if changedpaths includes data-plane, add "data-plane"
   // same for "resource-manager". We care about whether resourcemanager will be present for a later check
-  const { resourceManagerLabelShouldBePresent } = await processPRType(context, labelContext);
+  const { resourceManagerLabelShouldBePresent, dataPlaneShouldBePresent } = await processPRType(context, labelContext);
 
   // Has to be run in a PR context. Uses addition and update to understand
   // if the suppressions have been changed. If they have, suppressionReviewRequired must be added
@@ -140,6 +140,7 @@ export async function evaluateImpact(
     rpaasRPMissing: ciNewRPNamespaceWithoutRpaaSLabelShouldBePresent,
     rpaasRpNotInPrivateRepo: ciRpaasRPNotInPrivateRepoLabelShouldBePresent,
     resourceManagerRequired: resourceManagerLabelShouldBePresent,
+    dataPlaneRequired: dataPlaneShouldBePresent,
     rpaasExceptionRequired: rpaasExceptionLabelShouldBePresent,
     typeSpecChanged: typeSpecLabelShouldBePresent,
     isNewApiVersion: newApiVersion,
@@ -351,7 +352,7 @@ export async function getPRChanges(ctx: PRContext): Promise<PRChange[]> {
 async function processPRType(
   context: PRContext,
   labelContext: LabelContext,
-): Promise<{ resourceManagerLabelShouldBePresent: boolean }> {
+): Promise<{ resourceManagerLabelShouldBePresent: boolean, dataPlaneShouldBePresent: boolean }> {
   console.log("ENTER definition processPRType");
   const types: PRType[] = await getPRType(context);
 
@@ -360,10 +361,10 @@ async function processPRType(
     types,
     labelContext,
   );
-  processPRTypeLabel("data-plane", types, labelContext);
+  const dataPlaneShouldBePresent = processPRTypeLabel("data-plane", types, labelContext);
 
   console.log("RETURN definition processPRType");
-  return { resourceManagerLabelShouldBePresent };
+  return { resourceManagerLabelShouldBePresent, dataPlaneShouldBePresent };
 }
 
 async function getPRType(context: PRContext): Promise<PRType[]> {

@@ -131,6 +131,7 @@ describe("E2E Integration Test", () => {
         const mockCore = {
           info: vi.fn((message) => console.log(`[INFO] ${message}`)),
           warning: vi.fn((message) => console.log(`[WARNING] ${message}`)),
+          debug: vi.fn((message) => console.log(`[DEBUG] ${message}`)),
           error: vi.fn((message) => console.log(`[ERROR] ${message}`)),
           setFailed: vi.fn((message) => console.log(`[FAILED] ${message}`)),
         } as any;
