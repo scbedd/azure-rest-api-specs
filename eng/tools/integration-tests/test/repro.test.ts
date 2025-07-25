@@ -13,7 +13,7 @@ import { LabelContext } from "@azure-tools/summarize-impact/src/labelling-types.
 // Constants
 const TARGET_OWNER = "Azure";
 const TARGET_REPO = "azure-rest-api-specs";
-const TARGET_PR = 35346;
+const TARGET_PR = 36207;
 const TEMP_DIR_BASE = `/tmp/pr-${TARGET_PR}-test`;
 
 describe("E2E Integration Test", () => {
@@ -64,14 +64,13 @@ describe("E2E Integration Test", () => {
 
       if (!beforeExists) {
         console.log("Cloning repository for 'before' state...");
-        await gitBefore.clone(`https://github.com/${TARGET_OWNER}/${TARGET_REPO}.git`, ".");
+        await gitBefore.clone(`https://github.com/${TARGET_OWNER}/${TARGET_REPO}.git`, ".", ["--depth=1"]);
       } else {
         console.log("Repository already exists, fetching updates for 'before' state...");
         await gitBefore.fetch();
       }
 
-      await gitBefore.checkout(prData.base.ref);
-      await gitBefore.pull("origin", prData.base.ref);
+      await gitBefore.checkout(prData.base.sha);
 
       // Clone/update repository for "after" state (PR branch)
       const gitAfter = simpleGit(tempDirAfter);
@@ -79,10 +78,10 @@ describe("E2E Integration Test", () => {
 
       if (!afterExists) {
         console.log("Cloning repository for 'after' state...");
-        await gitAfter.clone(`https://github.com/${TARGET_OWNER}/${TARGET_REPO}.git`, ".");
+        await gitAfter.clone(`https://github.com/${TARGET_OWNER}/${TARGET_REPO}.git`, ".", ["--depth=1"]);
       } else {
         console.log("Repository already exists, fetching updates for 'after' state...");
-        await gitAfter.fetch();
+        await gitAfter.fetch("origin", prData.head.sha, ["--depth=1"]);
       }
 
       // Checkout the PR branch
@@ -95,7 +94,7 @@ describe("E2E Integration Test", () => {
       try {
         const changedFileDetails = await getChangedFilesStatuses({
           cwd: tempDirAfter,
-          baseCommitish: prData.base.sha,
+          baseCommitish: prData.base.ref,
         });
 
         console.log(`Found ${changedFileDetails.total} changed files`);
