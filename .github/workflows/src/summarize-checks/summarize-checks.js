@@ -321,13 +321,7 @@ export async function summarizeChecksImpl(
 ) {
   core.info(`Handling ${event_name} event for PR #${issue_number} in ${owner}/${repo}.`);
 
-  // retrieve latest labels state
-  const labels = await github.paginate(github.rest.issues.listLabelsOnIssue, {
-    owner,
-    repo,
-    issue_number: issue_number,
-    per_page: PER_PAGE_MAX,
-  });
+  let labelNames = await getExistingLabels(github, owner, repo, issue_number);
 
   /** @type {[CheckRunData[], CheckRunData[], import("./labelling.js").ImpactAssessment | undefined]} */
   const [requiredCheckRuns, fyiCheckRuns, impactAssessment] = await getCheckRunTuple(
@@ -339,9 +333,6 @@ export async function summarizeChecksImpl(
     issue_number,
     EXCLUDED_CHECK_NAMES,
   );
-
-  /** @type {string[]} */
-  let labelNames = labels.map((/** @type {{ name: string; }} */ label) => label.name);
 
   let labelContext = await updateLabels(labelNames, impactAssessment);
 
@@ -407,6 +398,27 @@ export async function summarizeChecksImpl(
   core.info(
     `Summarize checks has identified that status of "Automated merging requirements met" check should be updated to: ${automatedChecksMet}.`,
   );
+}
+
+/**
+ * @param {import('@actions/github-script').AsyncFunctionArguments['github']} github
+ * @param {string} owner
+ * @param {string} repo
+ * @param {number} issue_number
+ * @param {*} owner
+ * @param {*} repo
+ * @param {*} issue_number
+ * @return {Promise<string[]>}
+ */
+export async function getExistingLabels(github, owner, repo, issue_number) {
+  const labels = await github.paginate(github.rest.issues.listLabelsOnIssue, {
+    owner,
+    repo,
+    issue_number: issue_number,
+    per_page: PER_PAGE_MAX,
+  });
+  /** @type {string[]} */
+  return labels.map((/** @type {{ name: string; }} */ label) => label.name);
 }
 
 /**

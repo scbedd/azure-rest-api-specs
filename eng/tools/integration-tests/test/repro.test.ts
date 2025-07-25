@@ -44,7 +44,7 @@ describe("E2E Integration Test", () => {
   });
 
   it.skipIf(!process.env.GITHUB_TOKEN || !process.env.INTEGRATION_TEST)(
-    "re-check-pr",
+    "Check PR Output",
     async () => {
       // Fetch PR data from GitHub
       const prResponse = await octokit.rest.pulls.get({
@@ -53,6 +53,8 @@ describe("E2E Integration Test", () => {
         pull_number: TARGET_PR,
       });
       prData = prResponse.data;
+      let existingLabels = prData.labels.map((label: any) => label.name);
+      existingLabels = existingLabels.filter((label: string) => label === "VersioningReviewRequired" || label === "BreakingChangeReviewRequired");
 
       console.log(`Fetched PR data for #${TARGET_PR}: ${prData.title}`);
       console.log(`Base: ${prData.base.ref} (${prData.base.sha})`);
@@ -140,9 +142,13 @@ describe("E2E Integration Test", () => {
           },
         } as any;
 
-        // Mock getImpactAssessment to return our local impact assessment
+        // Mock getImpactAssessment to return our impact assessment from local code
         const getImpactAssessmentSpy = vi.spyOn(summarizeChecksModule, "getImpactAssessment");
         getImpactAssessmentSpy.mockResolvedValue(impactAssessment);
+
+        // Mock getExistingLabels to return an empty array
+        const getExistingLabelsSpy = vi.spyOn(summarizeChecksModule, "getExistingLabels");
+        getExistingLabelsSpy.mockResolvedValue(existingLabels);
 
         // Call summarizeChecksImpl with our local impact assessment
         console.log("Calling summarizeChecksImpl...");
