@@ -58,7 +58,6 @@ import {
  * @property {boolean} rpaasRPMissing - Whether the RPaaS RP label is missing.
  * @property {boolean} typeSpecChanged - Whether a TypeSpec file has changed.
  * @property {boolean} isDraft - Whether the PR is a draft.
- * @property {LabelContext} labelContext - The context containing present, to-add, and to-remove labels.
  * @property {string} targetBranch - The name of the target branch for the PR.
  */
 
@@ -536,9 +535,15 @@ export async function processImpactAssessment(
   if (resourceManagerLabelShouldBePresent) {
     resourceManagerLabel.shouldBePresent = true;
   }
+  else {
+    resourceManagerLabel.shouldBePresent = false;
+  }
 
   if (dataPlaneLabelShouldBePresent) {
     dataplaneLabel.shouldBePresent = true;
+  }
+  else {
+    dataplaneLabel.shouldBePresent = false;
   }
 
   dataplaneLabel.applyStateChange(labelContext.toAdd, labelContext.toRemove);
@@ -546,10 +551,10 @@ export async function processImpactAssessment(
   newApiVersionLabel.applyStateChange(labelContext.toAdd, labelContext.toRemove);
   armReviewLabel.applyStateChange(labelContext.toAdd, labelContext.toRemove);
 
-
   // this is the only labelling that was part of original pipelinebot logic, it handles the rotation of
   // ARMChangesRequested, WaitForArmFeedback, and ARMSignedOff labels. The thing is, we only want to make
-  // these changes if the review is actually an ARM review. So we're going to place this inside impactAssessment as well
+  // these changes if the review is actually an ARM review. So we're going to place this after processing an impactAssessment
+  // which will tell us if a the ARMReview label should be present or not.
   processArmReviewLabels(labelContext, [...labelContext.present, ...labelContext.toAdd]);
 
   console.log(

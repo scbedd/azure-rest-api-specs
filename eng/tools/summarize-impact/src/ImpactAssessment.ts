@@ -1,5 +1,3 @@
-import { LabelContext } from "./labelling-types.js";
-
 export type ImpactAssessment = {
   resourceManagerRequired: boolean;
   dataPlaneRequired: boolean;
@@ -12,6 +10,5 @@ export type ImpactAssessment = {
   rpaasRPMissing: boolean;
   typeSpecChanged: boolean;
   isDraft: boolean;
-  labelContext: LabelContext;
   targetBranch: string;
 };

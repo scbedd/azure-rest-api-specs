@@ -98,7 +98,6 @@ export async function evaluateImpact(
   // if the suppressions have been changed. If they have, suppressionReviewRequired must be added
   // as a label
   const suppressionRequired = await processSuppression(context, labelContext);
-  console.log(`suppressionRequired: ${suppressionRequired}`);
 
   // needs to examine "after" context to understand if a readme that was changed is RPaaS or not
   const { rpaasLabelShouldBePresent } = await processRPaaS(context, labelContext);
@@ -134,7 +133,7 @@ export async function evaluateImpact(
   const newApiVersion = await isNewApiVersion(context);
 
   return {
-    suppressionReviewRequired: labelContext.toAdd.has("suppressionsReviewRequired"),
+    suppressionReviewRequired: suppressionRequired,
     rpaasChange: rpaasLabelShouldBePresent,
     newRP: newRPNamespaceLabelShouldBePresent,
     rpaasRPMissing: ciNewRPNamespaceWithoutRpaaSLabelShouldBePresent,
@@ -145,7 +144,6 @@ export async function evaluateImpact(
     typeSpecChanged: typeSpecLabelShouldBePresent,
     isNewApiVersion: newApiVersion,
     isDraft: context.isDraft,
-    labelContext: labelContext,
     targetBranch: context.targetBranch,
   };
 }
