@@ -4,6 +4,7 @@ import { processArmReviewLabels } from "../src/summarize-checks/labelling.js";
 import {
   createNextStepsComment,
   summarizeChecksImpl,
+  updateLabels,
 } from "../src/summarize-checks/summarize-checks.js";
 import { createMockCore } from "./mocks.js";
 
@@ -520,7 +521,47 @@ describe("Summarize Checks Tests", () => {
     );
   });
 
-  describe("label add and remove", () => {
+  describe("automated merging requirements met processing", () => {});
+
+  describe("labelling integration tests", () => {
+    const testCases = [
+      {
+        description: "blahblah",
+        existingLabels: ["ARMReview"],
+        impactAssesssment: {
+          suppressionReviewRequired: false,
+          rpaasChange: false,
+          newRP: false,
+          rpaasRPMissing: false,
+          rpaasRpNotInPrivateRepo: false,
+          resourceManagerRequired: true,
+          dataPlaneRequired: false,
+          rpaasExceptionRequired: false,
+          typeSpecChanged: true,
+          isNewApiVersion: false,
+          isDraft: true,
+          targetBranch: "tag-update-fixes",
+        },
+        expectedLabelContext: {
+          present: ["ARMReview"],
+          toAdd: ["WaitForARMFeedback"],
+          toRemove: [],
+        },
+      },
+    ];
+    it.each(testCases)(
+      "$description",
+      async ({ existingLabels, impactAssesssment, expectedLabelContext }) => {
+        const labelContext = await updateLabels(existingLabels, impactAssesssment);
+
+        expect([...labelContext.present].sort()).toEqual(expectedLabelContext.present.sort());
+        expect([...labelContext.toAdd].sort()).toEqual(expectedLabelContext.toAdd.sort());
+        expect([...labelContext.toRemove].sort()).toEqual(expectedLabelContext.toRemove.sort());
+      },
+    );
+  });
+
+  describe("arm review process handling", () => {
     const testCases = [
       {
         existingLabels: ["WaitForARMFeedback", "ARMChangesRequested", "other-label", "ARMReview"],
