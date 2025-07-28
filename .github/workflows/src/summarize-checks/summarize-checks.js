@@ -44,10 +44,6 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-// TEST OVERRIDE: Allows tests to inject mock values
-/** Map of override keys to values for testing */
-export const testOverrides = new Map();
-
 /**
  * @typedef {Object} CheckMetadata
  * @property {number} precedence
@@ -562,7 +558,6 @@ export function updateLabels(existingLabels, impactAssessment) {
  * @param {string} head_sha - The commit SHA to check.
  * @param {number} prNumber - The pull request number.
  * @param {string[]} excludedCheckNames
- * @param {import("./labelling.js").ImpactAssessment | undefined} existingImpactAssessment
  * @returns {Promise<[CheckRunData[], CheckRunData[], import("./labelling.js").ImpactAssessment | undefined]>}
  */
 export async function getCheckRunTuple(
@@ -572,8 +567,7 @@ export async function getCheckRunTuple(
   repo,
   head_sha,
   prNumber,
-  excludedCheckNames,
-  existingImpactAssessment = undefined
+  excludedCheckNames
 ) {
   // This function was originally a version of getRequiredAndFyiAndAutomatedMergingRequirementsMetCheckRuns
   // but has been simplified for clarity and purpose.
@@ -608,9 +602,9 @@ export async function getCheckRunTuple(
   }
 
   core.info(
-    // `RequiredCheckRuns: ${JSON.stringify(reqCheckRuns)}, ` +
-    //   `FyiCheckRuns: ${JSON.stringify(fyiCheckRuns)}, ` +
-      `ImpactAssessment: ${JSON.stringify(existingImpactAssessment ?? impactAssessment)}`,
+    `RequiredCheckRuns: ${JSON.stringify(reqCheckRuns)}, ` +
+    `FyiCheckRuns: ${JSON.stringify(fyiCheckRuns)}, ` +
+    `ImpactAssessment: ${JSON.stringify(impactAssessment)}`,
   );
   const filteredReqCheckRuns = reqCheckRuns.filter(
     /**
@@ -625,7 +619,7 @@ export async function getCheckRunTuple(
     (checkRun) => !excludedCheckNames.includes(checkRun.name),
   );
 
-  return [filteredReqCheckRuns, filteredFyiCheckRuns, existingImpactAssessment ?? impactAssessment];
+  return [filteredReqCheckRuns, filteredFyiCheckRuns, impactAssessment];
 }
 
 /**
@@ -654,8 +648,6 @@ export function checkRunIsSuccessful(checkRun) {
  * @returns {[CheckRunData[], CheckRunData[], number | undefined]}
  */
 function extractRunsFromGraphQLResponse(response) {
-  console.log('extractRunsFromGraphQLResponse module path:', __filename);
-  console.trace('extractRunsFromGraphQLResponse stack trace');
   /** @type {CheckRunData[]} */
   const reqCheckRuns = [];
   /** @type {CheckRunData[]} */
@@ -965,12 +957,6 @@ function buildViolatedLabelRulesNextStepsText(violatedRequiredLabelsRules) {
  * @returns {Promise<import("./labelling.js").ImpactAssessment | undefined>} The parsed job summary data
  */
 export async function getImpactAssessment(github, core, owner, repo, runId) {
-  // TEST OVERRIDE: Allow injection of mock impact assessment for testing
-  if (testOverrides.has("impactAssessment")) {
-    core.info("Using test override impact assessment");
-    return testOverrides.get("impactAssessment");
-  }
-
   try {
     // List artifacts for provided workflow run
     const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
