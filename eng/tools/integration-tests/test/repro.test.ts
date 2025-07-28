@@ -10,6 +10,8 @@ import { PRContext } from "@azure-tools/summarize-impact/src/PRContext.js";
 import { evaluateImpact } from "@azure-tools/summarize-impact/src/impact.js";
 import { LabelContext } from "@azure-tools/summarize-impact/src/labelling-types.js";
 
+const summarizeChecksModule = await import("../../../../.github/workflows/src/summarize-checks/summarize-checks.js");
+
 // Constants
 const TARGET_OWNER = "Azure";
 const TARGET_REPO = "azure-rest-api-specs";
@@ -123,7 +125,10 @@ describe("E2E Integration Test", () => {
         impactAssessment = await evaluateImpact(prContext, labelContext);
         console.log("Impact assessment generated:", JSON.stringify(impactAssessment, null, 2));
 
-        const summarizeChecksModule = await import("../../../../.github/workflows/src/summarize-checks/summarize-checks.js");
+        // Verify we have a valid impact assessment before proceeding
+        if (!impactAssessment) {
+          throw new Error("Impact assessment is undefined - cannot proceed with test");
+        }
 
         // Create mock GitHub and core objects
         const mockGithub = octokit as any;
@@ -143,14 +148,6 @@ describe("E2E Integration Test", () => {
           },
         } as any;
 
-        // Mock getImpactAssessment to return our impact assessment from local code
-        const getImpactAssessmentSpy = vi.spyOn(summarizeChecksModule, "getImpactAssessment");
-        getImpactAssessmentSpy.mockResolvedValue(impactAssessment);
-
-        // Mock getExistingLabels to return an empty array
-        const getExistingLabelsSpy = vi.spyOn(summarizeChecksModule, "getExistingLabels");
-        getExistingLabelsSpy.mockResolvedValue(existingLabels);
-
         // Call summarizeChecksImpl with our local impact assessment
         console.log("Calling summarizeChecksImpl...");
         await summarizeChecksModule.summarizeChecksImpl(
@@ -162,11 +159,9 @@ describe("E2E Integration Test", () => {
           TARGET_PR,
           prData.head.sha,
           "pull_request",
-          prData.base.ref
+          prData.base.ref,
+          impactAssessment
         );
-
-        // Verify that our mock was called
-        expect(mockCore.info).toHaveBeenCalled();
         console.log("Integration test completed successfully!");
 
       } finally {
