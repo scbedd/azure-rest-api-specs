@@ -503,7 +503,7 @@ describe("Summarize Checks Tests", () => {
     it.skipIf(!process.env.GITHUB_TOKEN || !process.env.INTEGRATION_TEST)(
       "Should fetch real pr data and check the next steps to merge and final labels against what is actually there.",
       async () => {
-        const issue_number = 36265;
+        const issue_number = 36258;
         const owner = "Azure";
         const repo = "azure-rest-api-specs";
 

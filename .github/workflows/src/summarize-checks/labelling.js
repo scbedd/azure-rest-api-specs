@@ -486,8 +486,12 @@ export async function processImpactAssessment(labelContext, impactAssessment) {
   const typeSpecLabel = new Label("TypeSpec", labelContext.present);
   typeSpecLabel.shouldBePresent = impactAssessment.typeSpecChanged || false;
 
-  const suppressionReviewRequiredLabel = new Label("SuppressionReviewRequired", labelContext.present);
-  suppressionReviewRequiredLabel.shouldBePresent = impactAssessment.suppressionReviewRequired || false;
+  const suppressionReviewRequiredLabel = new Label(
+    "SuppressionReviewRequired",
+    labelContext.present,
+  );
+  suppressionReviewRequiredLabel.shouldBePresent =
+    impactAssessment.suppressionReviewRequired || false;
 
   const rpassReviewRequiredLabel = new Label("RPaaS", labelContext.present);
   rpassReviewRequiredLabel.shouldBePresent = impactAssessment.rpaasChange || false;
@@ -508,7 +512,8 @@ export async function processImpactAssessment(labelContext, impactAssessment) {
     "CI-RpaaSRPNotInPrivateRepo",
     labelContext.present,
   );
-  ciRpaasRPNotInPrivateRepoLabel.shouldBePresent = impactAssessment.rpaasRpNotInPrivateRepo || false;
+  ciRpaasRPNotInPrivateRepoLabel.shouldBePresent =
+    impactAssessment.rpaasRpNotInPrivateRepo || false;
 
   const branch = impactAssessment.targetBranch;
   const isReleaseBranchVal = isReleaseBranch(branch);
