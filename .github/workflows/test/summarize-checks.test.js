@@ -503,7 +503,7 @@ describe("Summarize Checks Tests", () => {
     it.skipIf(!process.env.GITHUB_TOKEN || !process.env.INTEGRATION_TEST)(
       "Should fetch real pr data and check the next steps to merge and final labels against what is actually there.",
       async () => {
-        const issue_number = 36258;
+        const issue_number = 36265;
         const owner = "Azure";
         const repo = "azure-rest-api-specs";
 
@@ -514,6 +514,7 @@ describe("Summarize Checks Tests", () => {
           "dependencies",
           "javascript",
           "Monitor",
+          "brownfield",
         ];
 
         const github = new Octokit({
@@ -570,6 +571,19 @@ describe("Summarize Checks Tests", () => {
 
         const actualLabels = [...labelContext.toAdd, ...labelContext.present];
         expect(actualLabels.sort()).toEqual(expectedLabels.sort());
+
+        if (automatedChecksMet === "blocked") {
+          expect(expectedNextStepsComment).toContain("❌");
+        } else if (automatedChecksMet === "success") {
+          expect(commentBody).toBe(
+            '<h2>Next Steps to Merge</h2>✅ All automated merging requirements have been met! To get your PR merged, see <a href="https://aka.ms/azsdk/specreview/merge">aka.ms/azsdk/specreview/merge</a>.',
+          ).toEqual(expectedNextStepsComment);
+        } else if (automatedChecksMet === "pending") {
+          expect(commentBody).toBe("<h2>Next Steps to Merge</h2>⌛ Please wait. Next steps to merge this PR are being evaluated by automation. ⌛");
+        } else {
+          throw new Error(`Unexpected automatedChecksMet value: ${automatedChecksMet}`);
+        }
+
         expect(commentBody).toEqual(expectedNextStepsComment);
       },
       600000,
