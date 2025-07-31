@@ -383,6 +383,106 @@ describe("Summarize Checks Unit Tests", () => {
       expect(output).toEqual(expectedOutput);
     });
 
+    // One of the core updates to the checks in azure-rest-api-specs when we merge is to update Summarize PR Impact to a
+    // required check, so if we don't have an impact assessment it SHOULD Be failed, and we should not see this situation.
+    // We'll still test for it to ensure the logic handles though.
+    it("should generate pending summary when impact assessment is not completed, but no failures exist", async () => {
+      const repo = "azure-rest-api-specs";
+      const targetBranch = "main";
+      const labelNames = [];
+      const fyiCheckRuns = [];
+      const expectedOutput = [
+        "<h2>Next Steps to Merge</h2>⌛ Please wait. Next steps to merge this PR are being evaluated by automation. ⌛",
+        {
+          name: "[TEST-IGNORE] Automated merging requirements met",
+          result: "pending",
+          summary: "The requirements for merging this PR are still being evaluated. Please wait.",
+        },
+      ];
+
+      const requiredCheckRuns = [
+        {
+          name: "SpellCheck",
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          checkInfo: getCheckInfo("SpellCheck"),
+        },
+        {
+          name: "Swagger SemanticValidation",
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          checkInfo: getCheckInfo("Swagger SemanticValidation"),
+        },
+      ];
+
+      const output = await createNextStepsComment(
+        mockCore,
+        repo,
+        labelNames,
+        targetBranch,
+        requiredCheckRuns,
+        fyiCheckRuns,
+        false, // assessmentCompleted
+      );
+
+      expect(output).toEqual(expectedOutput);
+    });
+
+    it("should generate an error summary with a failed check but no impact assessment", async () => {
+      const repo = "azure-rest-api-specs";
+      const targetBranch = "main";
+      const labelNames = [];
+      const fyiCheckRuns = [];
+      const expectedOutput = [
+        `<h2>Next Steps to Merge</h2>Next steps that must be taken to merge this PR: <br/><ul><li>❌ The required check named <code>Swagger BreakingChange</code> has failed. To unblock this PR, follow the process at <a href="https://aka.ms/brch">aka.ms/brch</a>.</li></ul>`,
+        {
+          name: "[TEST-IGNORE] Automated merging requirements met",
+          result: "FAILURE",
+          summary:
+            "❌ This PR cannot be merged because some requirements are not met. See the details.",
+        },
+      ];
+
+      const requiredCheckRuns = [
+        {
+          name: "Protected Files",
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          checkInfo: getCheckInfo("Protected Files"),
+        },
+        {
+          name: "TypeSpec Validation",
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          checkInfo: getCheckInfo("TypeSpec Validation"),
+        },
+        {
+          name: "Swagger BreakingChange",
+          status: "COMPLETED",
+          conclusion: "FAILED",
+          checkInfo: getCheckInfo("Swagger BreakingChange"),
+        },
+        {
+          name: "Breaking Change(Cross-Version)",
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          checkInfo: getCheckInfo("Breaking Change(Cross-Version)"),
+        },
+      ];
+
+      const output = await createNextStepsComment(
+        mockCore,
+        repo,
+        labelNames,
+        targetBranch,
+        requiredCheckRuns,
+        fyiCheckRuns,
+        false, // assessmentCompleted
+      );
+
+      expect(output).toEqual(expectedOutput);
+    });
+
     it("should generate pending summary when impact assessment is not completed", async () => {
       const repo = "azure-rest-api-specs";
       const targetBranch = "main";
