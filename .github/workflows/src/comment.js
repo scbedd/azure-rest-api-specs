@@ -63,9 +63,6 @@ export async function commentOrUpdate(
   body,
   commentIdentifier,
 ) {
-  // Get the authenticated user to know who we are
-  const { data: user } = await github.rest.users.getAuthenticated();
-  const authenticatedUsername = user.login;
   const computedBody = body + `\n<!-- ${commentIdentifier} -->`;
 
   /** @type {IssueComment[]} */
@@ -76,16 +73,11 @@ export async function commentOrUpdate(
     per_page: PER_PAGE_MAX,
   });
 
-  // only examine the comments from user in our current GITHUB_TOKEN context
-  const existingComments = comments.filter(
-    (comment) => comment.user?.login === authenticatedUsername,
-  );
-
-  const [commentId, commentBody] = parseExistingComments(existingComments, commentIdentifier);
+  const [commentId, commentBody] = parseExistingComments(comments, commentIdentifier);
 
   if (commentId) {
     if (commentBody === computedBody) {
-      core.info(`No update needed for comment ${commentId} by ${authenticatedUsername}`);
+      core.info(`No update needed for comment ${commentId}.`);
       return; // No-op if the body is the same
     }
     await github.rest.issues.updateComment({
@@ -94,7 +86,7 @@ export async function commentOrUpdate(
       comment_id: commentId,
       body: computedBody,
     });
-    core.info(`Updated existing comment ${commentId} by ${authenticatedUsername}`);
+    core.info(`Updated existing comment ${commentId}.`);
   } else {
     // Create a new comment
     const { data: newComment } = await github.rest.issues.createComment({
