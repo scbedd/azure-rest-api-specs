@@ -601,6 +601,190 @@ export function getRequiredChecksFromBranchRuleOutput(checkResponseObj) {
 }
 
 /**
+ * @param {any} response - GraphQL response data
+ * @returns {[CheckRunData[], CheckRunData[], number | undefined]}
+ */
+export function extractRunsFromGraphQLResponse(response) {
+  /** @type {CheckRunData[]} */
+  const reqCheckRuns = [];
+  /** @type {CheckRunData[]} */
+  const fyiCheckRuns = [];
+
+  /** @type {number | undefined} */
+  let impactAssessmentWorkflowRun = undefined;
+
+  // Define the automated merging requirements check name
+
+  if (response.resource?.checkSuites?.nodes) {
+    response.resource.checkSuites.nodes.forEach(
+      /** @param {{ workflowRun?: WorkflowRunInfo, checkRuns?: { nodes?: any[] } }} checkSuiteNode */
+      (checkSuiteNode) => {
+        if (checkSuiteNode.checkRuns?.nodes) {
+          checkSuiteNode.checkRuns.nodes.forEach((checkRunNode) => {
+            if (checkRunNode.isRequired) {
+              reqCheckRuns.push({
+                name: checkRunNode.name,
+                status: checkRunNode.status,
+                conclusion: checkRunNode.conclusion,
+                checkInfo: getCheckInfo(checkRunNode.name),
+              });
+            }
+            // Note the "else" here. It means that:
+            // A GH check will be bucketed into "failing FYI check run" if:
+            // - It is failing
+            // - AND it is is NOT marked as 'required' in GitHub branch policy
+            // - AND it is marked as 'FYI' in this file's FYI_CHECK_NAMES array
+            else if (FYI_CHECK_NAMES.includes(checkRunNode.name)) {
+              fyiCheckRuns.push({
+                name: checkRunNode.name,
+                status: checkRunNode.status,
+                conclusion: checkRunNode.conclusion,
+                checkInfo: getCheckInfo(checkRunNode.name),
+              });
+            }
+          });
+        }
+      },
+    );
+  }
+
+  // extract the ImpactAssessment check run if it is completed and successful
+  if (response.resource?.checkSuites?.nodes) {
+    response.resource.checkSuites.nodes.forEach(
+      /** @param {{ workflowRun?: WorkflowRunInfo, checkRuns?: { nodes?: any[] } }} checkSuiteNode */
+      (checkSuiteNode) => {
+        if (checkSuiteNode.checkRuns?.nodes) {
+          checkSuiteNode.checkRuns.nodes.forEach((checkRunNode) => {
+            if (
+              checkRunNode.name === IMPACT_CHECK_NAME &&
+              checkRunNode.status?.toLowerCase() === "completed" &&
+              checkRunNode.conclusion?.toLowerCase() === "success"
+            ) {
+              // Assign numeric databaseId, not the string node ID
+              impactAssessmentWorkflowRun = checkSuiteNode.workflowRun?.databaseId;
+            }
+          });
+        }
+      },
+    );
+  }
+  return [reqCheckRuns, fyiCheckRuns, impactAssessmentWorkflowRun];
+}
+
+/**
+ * Fetch all check suites for a commit with pagination
+ * @param {import('@actions/github-script').AsyncFunctionArguments['github']} github
+ * @param {typeof import("@actions/core")} core
+ * @param {string} owner
+ * @param {string} repo
+ * @param {string} sha
+ * @param {number} prNumber
+ * @returns {Promise<any>} Complete GraphQL response with all check suites
+ */
+async function getAllCheckSuites(github, core, owner, repo, sha, prNumber) {
+  // First, get the total count using REST API to avoid expensive GraphQL if there are too many suites
+  const { data: checkSuitesResponse } = await github.rest.checks.listSuitesForRef({
+    owner,
+    repo,
+    ref: sha,
+    per_page: 1, // We only need the count, not the actual data
+  });
+
+  const totalCheckSuites = checkSuitesResponse.total_count;
+
+  // Bail if too many check suites to avoid burning GraphQL rate limits
+  if (totalCheckSuites > 500) {
+    throw new Error(
+      `Too many check suites (${totalCheckSuites}) for ${owner}/${repo}#${prNumber}@${sha}. Summarize-Checks ending with error to avoid exhausting graphQL resources.`,
+    );
+  } else {
+    core.info(`Found ${totalCheckSuites} total check suites`);
+  }
+
+  // Now proceed with GraphQL pagination
+  const resourceUrl = `https://github.com/${owner}/${repo}/commit/${sha}`;
+  let allCheckSuites = [];
+  let hasNextPage = true;
+  let cursor = null;
+  let lastResponse = null;
+
+  while (hasNextPage) {
+    /** @type {string} */
+    const query = `
+      {
+        resource(url: "${resourceUrl}") {
+          ... on Commit {
+            checkSuites(first: 100${cursor ? `, after: "${cursor}"` : ""}) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              nodes {
+                workflowRun {
+                  id
+                  databaseId
+                  workflow {
+                    name
+                  }
+                  pullRequests(first: 10) {
+                    nodes { number }
+                  }
+                }
+                checkRuns(first: 100) {
+                  nodes {
+                    name
+                    status
+                    conclusion
+                    isRequired(pullRequestNumber: ${prNumber})
+                  }
+                }
+              }
+            }
+          }
+        }
+        rateLimit {
+          limit
+          cost
+          used
+          remaining
+          resetAt
+        }
+      }
+    `;
+
+    /** @type {any} */
+    const response = await github.graphql(query);
+    lastResponse = response;
+    core.info(`GraphQL Rate Limit Information: ${JSON.stringify(response.rateLimit)}`);
+
+    if (response.resource?.checkSuites?.nodes) {
+      allCheckSuites.push(...response.resource.checkSuites.nodes);
+      hasNextPage = response.resource.checkSuites.pageInfo.hasNextPage;
+      cursor = response.resource.checkSuites.pageInfo.endCursor;
+    } else {
+      hasNextPage = false;
+    }
+  }
+
+  // Filter suites to only those whose workflowRun is related to this PR
+  const filteredSuites = allCheckSuites.filter(
+    (suite) =>
+      suite.workflowRun?.pullRequests?.nodes?.some(
+        /** @param {{ number: number }} pr */ (pr) => pr.number === prNumber,
+      ),
+  );
+  // Return a response object matching the expected structure
+  return {
+    resource: {
+      checkSuites: {
+        nodes: filteredSuites,
+      },
+    },
+    rateLimit: lastResponse?.rateLimit,
+  };
+}
+
+/**
  * @param {import('@actions/github-script').AsyncFunctionArguments['github']} github
  * @param {typeof import("@actions/core")} core
  * @param {string} owner - The repository owner.
@@ -621,8 +805,10 @@ export async function getCheckRunTuple(
 ) {
   // This function was originally a version of getRequiredAndFyiAndAutomatedMergingRequirementsMetCheckRuns
   // but has been simplified for clarity and purpose.
-  /** @type {string[]} */
-  let requiredCheckNames = [];
+  /** @type {CheckRunData[]} */
+  let reqCheckRuns = [];
+  /** @type {CheckRunData[]} */
+  let fyiCheckRuns = [];
 
   /** @type {number | undefined} */
   let impactAssessmentWorkflowRun = undefined;
@@ -630,192 +816,11 @@ export async function getCheckRunTuple(
   /** @type { import("./labelling.js").ImpactAssessment | undefined } */
   let impactAssessment = undefined;
 
-  const allCheckRuns = await github.paginate(github.rest.checks.listForRef, {
-    owner: owner,
-    repo: repo,
-    ref: head_sha,
-    per_page: PER_PAGE_MAX,
-  });
+  const response = await getAllCheckSuites(github, core, owner, repo, head_sha, prNumber);
+  core.info(`GraphQL Rate Limit Information: ${JSON.stringify(response.rateLimit)}`);
 
-  const allCommitStatuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, {
-    owner: owner,
-    repo: repo,
-    ref: head_sha,
-    per_page: PER_PAGE_MAX,
-  });
-
-  // Get all check suites for this SHA
-  const allCheckSuites = await github.paginate(github.rest.checks.listSuitesForRef, {
-    owner: owner,
-    repo: repo,
-    ref: head_sha,
-    per_page: PER_PAGE_MAX,
-  });
-
-  // Filter check suites to only those associated with this PR
-  const prCheckSuiteIds = new Set(
-    allCheckSuites
-      .filter(
-        (suite) =>
-          Array.isArray(suite.pull_requests) &&
-          suite.pull_requests.some((pr) => pr.number === prNumber),
-      )
-      .map((suite) => suite.id),
-  );
-
-  // Process allCheckRuns and allCommitStatuses into unified CheckRunData array
-  // all checks will be considered as "FYI" until we have an impact assessment, so we can
-  // determine the target branch, and from there pull branch protect rulesets to ensure we
-  // are marking the required checks correctly.
-  /** @type {Array<CheckRunData & {_originalData: any, _source: string}>} */
-  const allChecks = [];
-
-  allCheckRuns.forEach((checkRun) => {
-    // Only include check runs whose check_suite.id is in prCheckSuiteIds
-    if (checkRun.check_suite && prCheckSuiteIds.has(checkRun.check_suite.id)) {
-      allChecks.push({
-        name: checkRun.name,
-        status: checkRun.status,
-        conclusion: checkRun.conclusion || null,
-        checkInfo: getCheckInfo(checkRun.name),
-        // Store original object for date sorting
-        _originalData: checkRun,
-        _source: "checkRun",
-      });
-    }
-  });
-
-  allCommitStatuses.forEach((status) => {
-    // Map commit status state to check run conclusion
-    let conclusion = null;
-    let checkStatus = "completed";
-
-    switch (status.state) {
-      case "success":
-        conclusion = "success";
-        break;
-      case "failure":
-        conclusion = "failure";
-        break;
-      case "error":
-        conclusion = "failure";
-        break;
-      case "pending":
-        checkStatus = "in_progress";
-        conclusion = null;
-        break;
-    }
-
-    allChecks.push({
-      name: status.context,
-      status: checkStatus,
-      conclusion: conclusion,
-      checkInfo: getCheckInfo(status.context),
-      // Store original object for date sorting and data access
-      _originalData: status,
-      _source: "commitStatus",
-    });
-  });
-
-  // Group by name and take the latest for each
-  const checksByName = new Map();
-
-  allChecks.forEach((check) => {
-    const name = check.name;
-    if (!checksByName.has(name)) {
-      checksByName.set(name, []);
-    }
-    checksByName.get(name).push(check);
-  });
-
-  // For each group, sort by date (newest first) and take the first one
-  const unifiedCheckRuns = [];
-  for (const [, checks] of checksByName) {
-    // Sort by date - newest first using invert(byDate(...))
-    const sortedChecks = checks.sort(
-      invert(
-        byDate((check) => {
-          if (check._source === "checkRun") {
-            // Check runs have started_at, completed_at, etc. Use the most recent available date
-            return (
-              check._originalData.completed_at ||
-              check._originalData.started_at ||
-              check._originalData.created_at
-            );
-          } else {
-            // Commit statuses have created_at and updated_at
-            return check._originalData.updated_at || check._originalData.created_at;
-          }
-        }),
-      ),
-    );
-
-    const latestCheck = sortedChecks[0];
-
-    if (
-      latestCheck.name === IMPACT_CHECK_NAME &&
-      latestCheck.status === "completed" &&
-      latestCheck.conclusion === "success"
-    ) {
-      const workflowRuns = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-        owner,
-        repo,
-        head_sha: head_sha,
-        check_suite_id: latestCheck._originalData.check_suite.id,
-        per_page: PER_PAGE_MAX,
-      });
-
-      // Dump workflowRun IDs and their associated pull_requests for debugging
-      core.info(
-        `All workflow runs for check suite ID: ${latestCheck._originalData.check_suite.id} (raw):`,
-      );
-      workflowRuns.forEach((run) => {
-        core.info(`Run ID: ${run.id}, pull_requests: ${JSON.stringify(run.pull_requests)}`);
-      });
-
-      // Filter workflow runs to only those associated with this PR
-      const filteredRuns = workflowRuns.filter(
-        (run) =>
-          Array.isArray(run.pull_requests) &&
-          run.pull_requests.some((pr) => pr.number === prNumber),
-      );
-
-      core.info(`Filtered workflow runs for PR #${prNumber}:`);
-      filteredRuns.forEach((run) => {
-        core.info(`Run ID: ${run.id}, pull_requests: ${JSON.stringify(run.pull_requests)}`);
-      });
-
-      if (filteredRuns.length === 0) {
-        core.warning(
-          `No workflow runs found for check suite ID: ${latestCheck._originalData.check_suite.id} associated with PR #${prNumber}`,
-        );
-      } else {
-        // Sort by updated_at to get the most recent run
-        const sortedRuns = filteredRuns.sort(
-          (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-        );
-        impactAssessmentWorkflowRun = sortedRuns[0].id;
-
-        if (filteredRuns.length > 1) {
-          core.info(
-            `Found ${filteredRuns.length} workflow runs for check suite ID: ${latestCheck._originalData.check_suite.id} associated with PR #${prNumber}, using most recent: ${sortedRuns[0].id}`,
-          );
-        }
-      }
-    }
-
-    // Create clean CheckRunData without temporary properties
-    unifiedCheckRuns.push({
-      name: latestCheck.name,
-      status: latestCheck.status,
-      conclusion: latestCheck.conclusion,
-      checkInfo: latestCheck.checkInfo,
-    });
-  }
-
-  core.info(
-    `Processed ${allCheckRuns.length} check runs and ${allCommitStatuses.length} commit statuses into ${unifiedCheckRuns.length} unified checks`,
-  );
+  [reqCheckRuns, fyiCheckRuns, impactAssessmentWorkflowRun] =
+    extractRunsFromGraphQLResponse(response);
 
   if (impactAssessmentWorkflowRun) {
     core.info(
@@ -828,34 +833,13 @@ export async function getCheckRunTuple(
       repo,
       impactAssessmentWorkflowRun,
     );
-
-    const branchRules = await github.rest.repos.getBranchRules({
-      owner: owner,
-      repo: repo,
-      branch: impactAssessment.targetBranch,
-    });
-
-    if (branchRules) {
-      requiredCheckNames = getRequiredChecksFromBranchRuleOutput(branchRules).filter(
-        // "Automated merging requirements met" may be required in repo settings, to ensure PRs cannot be merged unless
-        // it's passing.  However, it must be excluded from our list of requiredCheckNames, since it's status is set
-        // by our own workflow.  If this check isn't excluded, it creates a deadlock where it can never be set.
-        (checkName) => checkName !== AUTOMATED_CHECK_NAME,
-      );
-    }
-  } else {
-    requiredCheckNames = [IMPACT_CHECK_NAME];
   }
 
-  const filteredReqCheckRuns = unifiedCheckRuns.filter(
-    (checkRun) =>
-      !excludedCheckNames.includes(checkRun.name) && requiredCheckNames.includes(checkRun.name),
+  const filteredReqCheckRuns = reqCheckRuns.filter(
+    (checkRun) => !excludedCheckNames.includes(checkRun.name),
   );
-  const filteredFyiCheckRuns = unifiedCheckRuns.filter(
-    (checkRun) =>
-      !excludedCheckNames.includes(checkRun.name) &&
-      !requiredCheckNames.includes(checkRun.name) &&
-      FYI_CHECK_NAMES.includes(checkRun.name),
+  const filteredFyiCheckRuns = fyiCheckRuns.filter(
+    (checkRun) => !excludedCheckNames.includes(checkRun.name),
   );
 
   return [filteredReqCheckRuns, filteredFyiCheckRuns, impactAssessment];
